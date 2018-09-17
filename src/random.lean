@@ -1,3 +1,5 @@
+import data.equiv.basic
+
 namespace random1
 
 variables {α : Type} [partial_order α] [decidable_eq α] (M : α) (M_is_lb : ∀ a, M ≤ a)
@@ -55,3 +57,39 @@ lemma not_gt_equiv_eq : iff (¬ ∃ M', M' > M ∧ ∀ a, M' ≤ a) (¬¬∀ M',
   end
 
 end random1
+
+#print equiv
+
+universe u
+
+def eqv (t d : Type u) : Prop := nonempty (t ≃ d)
+instance Type.setoid : setoid (Type u) :=
+  { r := eqv
+  , iseqv := begin
+    constructor,
+    intro t,
+    apply nonempty.intro,
+    refl,
+    constructor,
+    intros t d,
+    intro e,
+    apply nonempty.elim e, intro e',
+    apply nonempty.intro,
+    exact equiv.symm e',
+    intros t d b,
+    intros e o,
+    apply nonempty.elim e, intro e',
+    apply nonempty.elim o, intro o',
+    apply nonempty.intro,
+    exact equiv.trans e' o',
+    end
+  }
+
+def up2iso : Type (u+1) := quotient Type.setoid
+def up2iso.mk : Type u → up2iso.{u} := @quotient.mk _ Type.setoid
+
+set_option pp.universes true
+
+lemma bool_eq_unit_sum_unit
+  : up2iso.mk bool = up2iso.mk (punit.{1} ⊕ punit.{1})
+  := quotient.sound $ nonempty.intro equiv.bool_equiv_unit_sum_unit
