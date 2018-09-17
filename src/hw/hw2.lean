@@ -245,9 +245,20 @@ lemma proof (a : ℝ) (a_Inf : a = Inf A) (a_Sup : a = Sup A) : A = {a} :=
 end problem3
 
 def sequentia (α : Type) := ℕ → α
-def converges_to (s : sequentia ℝ) (l : ℝ) :=
-  ∀ ε > 0, ∃ N : ℕ, ∀ n > N, dist (s n) l < ε
+
+def topology.converges_to {α : Type} [topological_space α] (f : ℕ → α) (l : α) : Prop :=
+  filter.tendsto f filter.at_top (nhds l)
+
+def converges_to (s : sequentia ℝ) (l : ℝ) : Prop :=
+  ∀ ε > 0, ∃ N : ℕ, ∀ n ≥ N, dist (s n) l < ε
 def converges (s : sequentia ℝ) := Exists (converges_to s)
+
+def converges_to.is_converges_to : ∀ f l, converges_to f l = topology.converges_to f l := by simp
+  [ converges_to, topology.converges_to
+  , nhds_eq_metric, ball
+  , filter.tendsto_infi
+  , filter.tendsto_principal
+  ]
 
 local infix `⟶`:50 := converges_to
 
@@ -319,12 +330,12 @@ lemma proof (s : sequentia ℝ) : (∀ n, abs (s (n+1)) < r*abs (s n)) → s ⟶
   intros ε ε_pos,
   have get_N := exists_nat_gt (log_base r (ε / abs (s 0))),
   apply exists_imp_exists _ get_N,
-  intro N, intro N_gt, intro n, intro n_gt,
+  intro N, intro N_gt, intro n, intro n_ge,
   rw real.dist_0_eq_abs,
   apply lt_of_le_of_lt,
   exact this n,
-  have : (N : ℝ) < (n : ℝ), rw nat.cast_lt, exact n_gt,
-  have := lt_trans N_gt this,
+  have : (N : ℝ) ≤ (n : ℝ), rw nat.cast_le, exact n_ge,
+  have := lt_of_lt_of_le N_gt this,
   suffices finishing : log_base r (ε / abs (s 0)) < n → r ^ n * abs (s 0) < ε,
     exact finishing this,
   admit,
