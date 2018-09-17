@@ -1,4 +1,4 @@
-import analysis.real tactic.ring
+import analysis.real tactic.ring tactic.interactive
 open set
 
 #print lattice.infi
@@ -16,13 +16,13 @@ begin
   simp [pow_two],
 end
 
-lemma signed_even {n : ℕ} : signed (2*n) = 1 :=
+@[simp] lemma signed_even {n : ℕ} : signed (2*n) = 1 :=
   begin
   induction n, refl, unfold signed,
   rw nat.mul_succ, rw pow_succ, rw pow_succ,
   simp, exact n_ih,
   end
-lemma signed_odd {n : ℕ} : signed (2*n+1) = -1 :=
+@[simp] lemma signed_odd {n : ℕ} : signed (2*n+1) = -1 :=
   begin
   unfold signed,
   rw pow_succ,
@@ -131,11 +131,41 @@ lemma A_inf_proof : is_glb A A_inf :=
     apply exists.elim v_h, intros n n_h, rw n_h,
     have n_mod_2 := nat.mod_two_eq_zero_or_one n,
     cases n_mod_2,
-    have := nat.dvd_of_mod_eq_zero n_mod_2,
-    cases this with n',
-    admit, admit,
+    {
+      have := nat.dvd_of_mod_eq_zero n_mod_2,
+      cases this with n',
+      apply add_le_of_le_sub_right,
+      transitivity,
+      apply a_lb _ (2*n'+1).to_pnat' rfl,
+      rw [(@pnat.to_pnat'_coe (2*n'+1) dec_trivial)],
+      rw [signed_odd, int.cast_neg, int.cast_one, ← this_h],
+      simp, rw inv_le_inv,
+      apply le_add_of_sub_right_le, simp, exact zero_le_one,
+      rw [← nat.cast_zero, ← nat.cast_one, ← nat.cast_add, nat.cast_lt, add_comm],
+      exact nat.zero_lt_succ _,
+      rw [← nat.cast_zero, nat.cast_lt],
+      exact pnat.pos n,
+    }, {
+      have : (n : ℕ) = 2*(n/2)+1,
+        begin
+        transitivity,
+        symmetry,
+        exact nat.mod_add_div n 2,
+        rw [add_comm, n_mod_2],
+        end,
+      apply add_le_of_le_sub_right,
+      transitivity,
+      apply a_lb _ (2*(↑n/2)+1 : ℕ).to_pnat' rfl,
+      rw [(@pnat.to_pnat'_coe (2*(↑n/2)+1 : ℕ) dec_trivial)],
+      rw [signed_odd, ← this, int.cast_neg, int.cast_one],
+      simp,
+    }
     end,
-  admit,
+  transitivity,
+  apply le_add_of_sub_left_le,
+  rw [← neg_neg (1 : ℝ)] at this,
+  exact this,
+  simp [harmonic_inf],
   end
 
 end problem1
@@ -333,6 +363,223 @@ lemma s_pos : ∀ n, 0 < s n :=
   show 0 < sqrt 2, rw sqrt_pos, exact two_pos,
   end
 
+meta def iterating (t : tactic unit) : tactic ℕ := do
+  (nat.succ <$> (t >> iterating)) <|> pure 0
+
+meta def rw_simple : bool → pexpr → tactic unit :=
+  λ symm rule,
+  tactic.interactive.rw
+    { rules :=
+      [ { pos := { line := 0, column := 0 }
+        , symm := symm
+        , rule := rule
+        }
+      ]
+    , end_pos := none
+    }
+    (interactive.loc.ns [none])
+
+meta def naturally : interactive.parse interactive.types.texpr → tactic unit := λ t, do
+  i0 ← iterating $ rw_simple tt ``(@nat.cast_zero %%t),
+  i1 ← iterating $
+    has_bind.and_then (rw_simple tt ``(@nat.cast_one %%t)) $
+      tactic.interactive.iterate none $
+        rw_simple tt ``(@nat.cast_bit0 %%t) <|> rw_simple tt ``(@nat.cast_bit1 %%t),
+  i2 ← iterating $ rw_simple tt ``(@nat.cast_add %%t) <|> rw_simple tt ``(@nat.cast_mul %%t),
+  i3 ← iterating $ rw_simple ff ``(@nat.cast_lt %%t) <|> rw_simple ff ``(@nat.cast_le %%t) <|> rw_simple ff ``(@nat.cast_inj %%t) <|> rw_simple ff ``(@nat.cast_max %%t) <|> rw_simple ff ``(@nat.cast_min %%t),
+  match i0 + i1 + i2 + i3 with
+  | nat.zero := tactic.fail "naturally did nothing"
+  | nat.succ _ := tactic.try $ do
+    tactic.exact_dec_trivial
+  end
+
+meta def natureally : tactic unit := naturally ``(ℝ)
+
+/-
+meta def naturally (t : expr) : tactic unit := do
+    i0 ← iterating `[ rw [← @nat.cast_zero %%t] ],
+    i1 ← iterating `[
+      rw [← @nat.cast_one t],
+      iterate { rw [← @nat.cast_bit0 t] <|> rw [← @nat.cast_bit1 t] }
+    ],
+    i2 ← iterating `[ rw [← @nat.cast_add t] <|> rw [← @nat.cast_mul t] ],
+    i3 ← iterating `[ rw [@nat.cast_le t] <|> rw [@nat.cast_lt t] <|> rw [@nat.cast_inj t] ],
+    match i0 + i1 + i2 + i3 with
+    | nat.zero := tactic.fail "naturally did nothing"
+    | nat.succ _ := pure punit.star
+    end
+
+meta def rationally (t : expr) : tactic unit :=
+  `[
+    iterate { rw [← @rat.cast_zero %%t] },
+    iterate {
+      rw [← @rat.cast_one %%t],
+      iterate { rw [← @rat.cast_bit0 %%t] <|> rw [← @rat.cast_bit1 %%t] },
+    },
+    iterate { rw [← @rat.cast_add %%t] <|> rw [← @rat.cast_mul %%t] },
+    iterate { rw [@rat.cast_le %%t] <|> rw [@rat.cast_lt %%t] <|> rw [@rat.cast_inj %%t] }
+  ]
+-/
+
+example : ∀ n : ℕ, (0 : ℕ) < 2 + n := by intro n; simpa [nat.zero_lt_succ]
+
+example : ∀ n : ℕ, (0 : ℝ) < 2 + n :=
+  begin
+  intro n,
+  natureally,
+  rw [add_comm _ n],
+  apply nat.zero_lt_succ
+  end
+
+example : ∀ (n : ℕ), (0 : ℝ) < 2 + n :=
+  begin
+  intro n,
+  natureally,
+  rw [add_comm _ n],
+  exact dec_trivial
+  end
+
+
+
+
+
+
+
+
+
+
+
+lemma ugh : sqrt (2 * sqrt 2) ≥ 3/2 :=
+  begin
+  rw [← @sqrt_sqr (3/2)],
+  apply (sqrt_le _ _).2,
+  unfold pow monoid.pow, simp, rw [div_mul_div, mul_comm _ (sqrt 2)],
+  apply le_mul_of_div_le two_pos, ring,
+  rw [← @sqrt_sqr (9/8)],
+  apply (sqrt_le _ _).2,
+  unfold pow monoid.pow, ring,
+  apply div_le_of_le_mul,
+  show (81 : ℝ) ≤ 64 * 2,
+  transitivity,
+  { show (81 : ℝ) ≤ 128, natureally },
+  { apply le_of_eq, ring },
+  { show (0 : ℝ) < 64, natureally },
+  show 0 ≤ 2 * sqrt 2,
+  {
+    apply mul_nonneg, tactic.swap, apply sqrt_nonneg, repeat { exact le_of_lt two_pos },
+  },
+  any_goals { unfold pow monoid.pow, rw [mul_one, div_mul_div] },
+  any_goals { ring, apply div_nonneg },
+  all_goals { natureally },
+  end
+
+lemma sigh : ∀ (n : ℕ), @has_le.le ℝ _ ((n+2)+2*(n+3)^2) (4*(n+2)*(n+3)) :=
+    begin
+    intro n,
+    ring, rw [right_distrib, right_distrib],
+    apply le_of_sub_nonneg,
+    ring, natureally,
+    end
+
+-- 2 - s n < ε ... n > 1/ε
+lemma s_sup : ∀ n : {n : ℕ // n > 1}, s n ≥ 2 - 1/n :=
+  begin
+  intro n,
+  cases n with n n_pos,
+  cases n, exfalso, exact not_lt_of_ge (nat.zero_le 1) n_pos,
+  cases n, exfalso, exact lt_irrefl 1 n_pos,
+  induction n with n ih,
+  simp, rw [← sqrt_mul (le_of_lt two_pos), one_add_one_eq_two],
+  have : @eq ℝ (2 + -2⁻¹) (3/2),
+  {
+    apply eq_div_of_mul_eq _ _ two_ne_zero,
+    rw [right_distrib, neg_mul_eq_neg_mul_symm, inv_mul_cancel two_ne_zero],
+    refl,
+  },
+  rw this,
+  exact ugh,
+  simp,
+  have n_1_1 : @eq ℝ (1 + (1 + ↑n)) ↑(n+2),
+  {
+    natureally, simp,
+  },
+  rw n_1_1,
+  have m_1 : ∀ (m : ℕ), @eq ℝ (1 + ↑m) ↑(m+1),
+  {
+    intro m,
+    natureally, simp,
+  },
+  have n_2 : @eq ℝ (2 + ↑n) ↑(n+2),
+  {
+    natureally, simp,
+  },
+  rw m_1 (n+2),
+  show (2 : ℝ) + -(↑(n + 3))⁻¹ ≤ sqrt 2 * sqrt (sqrt 2 * sqrt (sqrt 2 * sqrt (s n))),
+  have ih' := mul_le_mul (le_refl (sqrt 2)) ((sqrt_le _ _).2 (ih dec_trivial)) _ _,
+  simp at ih',
+  rw n_1_1 at ih',
+  refine le_trans _ ih',
+  rw ← sqrt_mul, transitivity, apply le_of_eq, symmetry,
+  apply sqrt_sqr _, tactic.swap,
+  rw sqrt_le,
+  unfold pow monoid.pow, simp,
+  rw [left_distrib, right_distrib],
+  ring, apply add_le_add_right,
+  rw [← neg_sub, neg_mul_eq_neg_mul_symm],
+  apply neg_le_neg,
+  rw [sub_mul], apply le_sub_left_of_add_le,
+  ring,
+  rw [← @div_eq_mul_inv ℝ _ 4],
+  apply le_div_of_mul_le _,
+  rw [right_distrib],
+  unfold pow monoid.pow, simp,
+  rw [mul_assoc (3 + ↑n : ℝ)⁻¹, inv_mul_cancel, mul_one],
+  rw [mul_assoc, mul_comm _⁻¹, ← mul_assoc],
+  apply add_le_of_le_sub_right,
+  rw [← div_eq_mul_inv],
+  apply div_le_of_le_mul _,
+  simp, rw [left_distrib (2 + ↑n : ℝ), ← neg_mul_eq_mul_neg, ← sub_eq_add_neg],
+  apply le_sub_left_of_add_le,
+  apply add_le_of_le_sub_right,
+  rw [← div_eq_mul_inv],
+  apply div_le_of_le_mul _,
+  simp, rw [left_distrib (3 + ↑n : ℝ), ← neg_mul_eq_mul_neg, ← sub_eq_add_neg],
+  apply le_sub_left_of_add_le,
+  refine eq.mp _ (sigh n),
+  { unfold pow monoid.pow, simp, ring, },
+  -- ugly tactics to kill off the remaining goals en masse
+  any_goals {
+    try { unfold pow monoid.pow },
+    simp,
+  },
+  any_goals { unfold gt },
+  any_goals { iterate { apply sqrt_nonneg <|> apply mul_nonneg } },
+  any_goals { unfold ge },
+  any_goals {
+    try { rw [add_comm _ (n : ℕ)] <|> rw [add_comm _ (n : ℝ)] },
+    natureally,
+  },
+  all_goals {
+    have : ∀ m : ℕ, ((2 : ℕ) : ℝ) + -(nat.succ m : ℝ)⁻¹ ≥ ↑0,
+    {
+      intro m,
+      rw [← sub_eq_add_neg],
+      apply le_sub_left_of_add_le,
+      rw [nat.cast_zero, add_zero],
+      transitivity,
+      show (nat.succ m : ℝ)⁻¹ ≤ 1,
+      rw [← @inv_inv' ℝ _ 1, inv_le_inv, inv_one, ← nat.cast_one, nat.cast_le],
+      exact nat.zero_lt_succ m,
+      rw [← nat.cast_zero, nat.cast_lt],
+      exact nat.zero_lt_succ m,
+      rw [inv_one],
+      exact zero_lt_one,
+      exact le_of_lt two_gt_one,
+    },
+    exact this _,
+  }
+  end
+
 lemma part_a : ∀ n, s n ≤ 2 :=
   begin
   intro n, induction n with n ih,
@@ -373,8 +620,6 @@ lemma part_c : converges s :=
 
 lemma blah {a b c : ℝ} : c - a < c - b → a > b := le_imp_le_iff_lt_imp_lt.1 (λ h, sub_le_sub_left h _)
 
-lemma decr (s : sequentia ℝ) : (∀ n, 0 < s n) → (∀ n, s (n+1) < s n) → s ⟶ 0 := well_founded.fix
-
 lemma part_d : s ⟶ 2 :=
   begin
   suffices : Sup {x : ℝ | ∃ (n : ℕ), x = s n} = 2,
@@ -390,6 +635,23 @@ lemma part_d : s ⟶ 2 :=
     existsi s n, constructor, existsi n, refl,
     apply blah c,
   intros ε ε_pos,
+  apply exists.elim (exists_nat_gt (1/ε)),
+  intro n, intro n_gt,
+  existsi max n 2,
+  have nmax_gt : ↑(max n 2) > 1/ε,
+    apply lt_of_lt_of_le, exact n_gt, rw nat.cast_le, apply le_max_left,
+  apply lt_of_le_of_lt,
+  apply sub_le_of_sub_le,
+  apply s_sup ⟨max n 2, _⟩,
+  apply lt_of_lt_of_le,
+  show 1 < 2, exact nat.le_refl 2,
+  exact le_max_right n 2,
+  simp at *, rw [← @inv_inv' _ _ ε, inv_lt_inv],
+  exact nmax_gt,
+  apply lt_of_lt_of_le,
+  show (0 : ℝ) < 2, natureally,
+  exact le_max_right n 2,
+  exact inv_pos ε_pos,
   end
 
 end problem9
