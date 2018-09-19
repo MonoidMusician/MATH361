@@ -1,4 +1,4 @@
-import tactic.interactive algebra.group_power
+import tactic.interactive algebra.group_power data.real.basic
 
 meta def iterating (t : tactic unit) : tactic ℕ := do
   (nat.succ <$> (t >> iterating)) <|> pure 0
