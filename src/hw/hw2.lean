@@ -1,11 +1,9 @@
 import analysis.real tactic.ring tactic.interactive
+import seq naturally
+
 open set
 
-#print lattice.infi
-#print is_glb
-
-def bdd (s : set ℝ) := ∃ a b : ℝ, s ⊆ Icc a b
-
+-- Helper definition with some associated lemmas
 def signed (n : ℕ) : ℤ :=  (-1 : ℤ)^n
 
 lemma signed_cases : ∀ n, (signed n = 1) ∨ (signed n = -1) :=
@@ -35,6 +33,8 @@ namespace problem1
 -- (1) Give an example (with proof) of a countable bounded subset A ⊂ ℝ
 --     whose inf and sup are both in ℝ \ A.
 
+-- I'm going to start with the harmonic sequence, bounded between 0 and 1
+-- (but never reaching a value of 0).
 def harmonic := {x : ℝ | ∃ n:ℕ+, x = 1/n}
 
 def harmonic_inf : ℝ := 0
@@ -95,6 +95,8 @@ lemma harmonic_sup_proof : is_lub harmonic harmonic_sup :=
   exact a_ub_1,
   end
 
+-- And if we make it alternate sign, then it will approach ±1, but
+-- never reach those
 def A := {x:ℝ | ∃ n:ℕ+, x = signed n * (1 - 1/n)}
 
 def A_inf : ℝ := -1
@@ -183,8 +185,14 @@ constant A_bdd_above : bdd_above A
 constant A_bdd_below : bdd_below A
 def B : set ℝ := upper_bounds A
 
-#check bdd_above
+-- The implementation of is_lub is instructive
+#print is_lub
+#print is_least
+-- That is, a least upper bound is an upper bound which is
+-- a lower bounds on the upper bounds.
 
+-- This already exists
+#check cInf_lower_bounds_eq_cSup
 lemma proof : Inf B = Sup A :=
   begin
   exact cInf_lower_bounds_eq_cSup A_bdd_above A_nonempty,
@@ -194,6 +202,7 @@ end problem2
 
 namespace problem3
 
+-- Helper lemma
 lemma eq_singleton_of_nonempty_of_subset_singleton
   {α : Type} {A : set α} {a : α} : A ≠ ∅ → A ⊆ {a} → A = {a} :=
   begin
@@ -219,14 +228,17 @@ constant A_nonempty : A ≠ ∅
 constant A_bdd_above : bdd_above A
 constant A_bdd_below : bdd_below A
 
+-- A must be a singleton set {a}, thus a = Inf A = Sup A
 lemma proof (a : ℝ) (a_Inf : a = Inf A) (a_Sup : a = Sup A) : A = {a} :=
   begin
+  -- a must be the least upper bound
   have a_lub : is_lub A a,
     rw a_Sup, constructor,
     simp [upper_bounds],
     intro a, exact le_cSup A_bdd_above,
     simp [lower_bounds, upper_bounds],
     intro a, exact cSup_le A_nonempty,
+  -- and the greatest lower bound
   have a_glb : is_glb A a,
     rw a_Inf, constructor,
     simp [lower_bounds],
@@ -235,8 +247,10 @@ lemma proof (a : ℝ) (a_Inf : a = Inf A) (a_Sup : a = Sup A) : A = {a} :=
     intro a, exact le_cInf A_nonempty,
   apply eq_singleton_of_nonempty_of_subset_singleton A_nonempty,
   rw subset_def, simp only [mem_singleton_iff],
+  -- we need to show that any element x in the set is just a
   intro x,
   intro x_in_A,
+  -- so we show it is ≤ a and ≥ a, since a is sup and inf
   apply le_antisymm,
   exact a_lub.1 _ x_in_A,
   exact a_glb.1 _ x_in_A,
@@ -244,52 +258,100 @@ lemma proof (a : ℝ) (a_Inf : a = Inf A) (a_Sup : a = Sup A) : A = {a} :=
 
 end problem3
 
-def sequentia (α : Type) := ℕ → α
+namespace problem4
 
-def topology.converges_to {α : Type} [topological_space α] (f : ℕ → α) (l : α) : Prop :=
-  filter.tendsto f filter.at_top (nhds l)
+-- (4) Prove that the sequence {n − 1/n}∞n=1 does not have a limit.
+noncomputable def s : seq ℝ := λ n, n - n⁻¹
 
-def converges_to (s : sequentia ℝ) (l : ℝ) : Prop :=
-  ∀ ε > 0, ∃ N : ℕ, ∀ n ≥ N, dist (s n) l < ε
-def converges (s : sequentia ℝ) := Exists (converges_to s)
+lemma s_pos : ∀ n, s (n+2) > 0 :=
+  begin
+  intro n, unfold s,
+  rw [← sub_self (2 : ℝ)],
+  apply sub_lt_sub_of_le_of_lt,
+  natureally,
+  apply lt_of_le_of_lt,
+  apply problem1.harmonic_sup_proof.1,
+  simp [problem1.harmonic],
+  existsi (⟨n+2, nat.succ_pos _⟩ : ℕ+),
+  simp,
+  simp only [problem1.harmonic_sup], natureally,
+  end
 
-def converges_to.is_converges_to : ∀ f l, converges_to f l = topology.converges_to f l := by simp
-  [ converges_to, topology.converges_to
-  , nhds_eq_metric, ball
-  , filter.tendsto_infi
-  , filter.tendsto_principal
-  ]
+-- It suffices to show that the sequence is not bounded, so,
+-- given a real number, illustrate an index where the sequence
+-- is actually larger than it.
+lemma proof : ¬converges s :=
+  begin
+  intro c, exfalso,
+  suffices : ¬∃ M, ∀ n, M > norm (s n),
+    exact this (bounded_of_converges c),
+  intro ex, apply exists.elim ex, intros M bound,
+  simp [s, real.norm_eq_abs] at bound,
+  cases h : ceil M,
+    -- if the ceiling is a positive value a, use a+2 as the index.
+    have : M ≤ abs (↑(a+2) + -(↑(a+2))⁻¹),
+      begin
+      rw abs_of_pos,
+      transitivity,
+      exact le_ceil M, rw h,
+      simp,
+      apply le_of_sub_nonneg, simp,
+      rw [← sub_self (1 : ℝ), ← sub_eq_add_neg],
+      apply sub_le_sub, exact le_of_lt one_lt_two,
+      apply problem1.harmonic_sup_proof.1,
+      simp [problem1.harmonic],
+      existsi (⟨a+2, nat.succ_pos _⟩ : ℕ+),
+      simp,
+      apply s_pos,
+      end,
+      exact not_le_of_gt (bound (a+2)) this,
+    -- otherwise, if it is negative, use the index 0
+    have : M < 0,
+      begin
+      apply lt_of_le_of_lt,
+      exact le_ceil M, rw h,
+      rw [int.cast_lt_zero],
+      unfold has_lt.lt int.lt,
+      rw [int.neg_succ_of_nat_eq'],
+      simp,
+      end,
+      exact not_lt_of_gt this (lt_of_le_of_lt (abs_nonneg _) (bound 0)),
+  end
+
+end problem4
 
 local infix `⟶`:50 := converges_to
 
-lemma converges_iff_bdd_not_decr (s : sequentia ℝ) :
+lemma converges_iff_bdd_not_decr (s : seq ℝ) :
   bdd_above {x : ℝ | ∃ n, x = s n} → (∀ n, s n ≤ s (n+1)) → converges s := sorry
 
-lemma converges_to_cSup (s : sequentia ℝ) : (∀ n, s n ≤ s (n+1)) → s ⟶ lattice.Sup {x : ℝ | ∃ n, x = s n} := sorry
+lemma converges_to_cSup (s : seq ℝ) : (∀ n, s n ≤ s (n+1)) → s ⟶ lattice.Sup {x : ℝ | ∃ n, x = s n} := sorry
 
 namespace problem5
 
 -- (5) Prove that if {|sn|}∞n=1 converges to 0 then {sn}∞n=1 converges to 0 also.
 
-lemma proof (s : sequentia ℝ) : abs ∘ s ⟶ 0 ↔ s ⟶ 0 :=
+-- This can actually be a biconditional; it is true almost by definition.
+lemma proof (s : seq ℝ) : abs ∘ s ⟶ 0 ↔ s ⟶ 0 :=
   begin
-  simp [converges_to],
-  suffices : ∀ n, dist (abs (s n)) 0 = dist (s n) 0, simp only [this],
-  intro n, rw real.dist_0_eq_abs, rw real.dist_0_eq_abs,
+  simp [converges_to.def],
+  suffices : ∀ n, norm (abs (s n)) = norm (s n), simp only [this],
+  intro n, rw real.norm_eq_abs, rw real.norm_eq_abs,
   exact abs_abs _,
   end
 
 end problem5
 
-def alternating (s : sequentia ℝ) : sequentia ℝ := λ n, signed n * s n
+noncomputable def alternating (s : seq ℝ) : seq ℝ := λ n, signed n * s n
 
 namespace problem6
 
 -- (6) Suppose {sn}∞n=1 converges to 0. Prove that {(−1)^n*sn}∞n=1 converges to 0 also.
 
-lemma proof (s : sequentia ℝ) : s ⟶ 0 ↔ alternating s ⟶ 0 :=
+-- This again is a biconditional along the same lines.
+lemma proof (s : seq ℝ) : s ⟶ 0 ↔ alternating s ⟶ 0 :=
   begin
-  simp [converges_to],
+  simp only [converges_to.def],
   suffices : ∀ n, dist (s n) 0 = dist (alternating s n) 0, simp only [this],
   intro n, rw real.dist_0_eq_abs, rw real.dist_0_eq_abs,
   simp [alternating],
@@ -302,18 +364,22 @@ namespace problem7
 
 -- (7) Suppose {sn}∞n=1 is a sequence of positive numbers with the property that sn+1 < (1/2)sn for all n ∈ N. Prove that limn→∞ sn = 0. How would you change your proof if 1/2 was replaced by a fixed number x ∈ (0, 1)?
 
+-- So it's actually easier if I do the more abstract version ...
 variable r : ℝ
 variable r_in_0_1 : r ∈ (Ioo 0 1 : set ℝ)
 
+-- whoops, we don't have these functions ...
 def powℝ (b : ℝ) (p : ℝ) : ℝ := sorry
 def log_base (b : ℝ) (x : ℝ) : ℝ := sorry
 lemma log_pow (b p : ℝ) : log_base b (powℝ b p) = p := sorry
 lemma pow_log (b p : ℝ) : powℝ b (log_base b p) = p := sorry
 
 include r_in_0_1
-lemma proof (s : sequentia ℝ) : (∀ n, abs (s (n+1)) < r*abs (s n)) → s ⟶ 0 :=
+lemma proof (s : seq ℝ) : (∀ n, abs (s (n+1)) < r*abs (s n)) → s ⟶ 0 :=
   begin
+  simp only [converges_to.def],
   intro prop,
+  -- This uses transitivity to compare it with a geometric sequence
   have : ∀ n, abs (s n) ≤ r^n * abs (s 0),
     intro n,
     cases n with n, simp,
@@ -326,6 +392,7 @@ lemma proof (s : sequentia ℝ) : (∀ n, abs (s (n+1)) < r*abs (s n)) → s ⟶
     rw mul_assoc,
     apply (mul_le_mul_left r_in_0_1.1).2,
     exact ih,
+  -- now we just need to ensure it is less than ε
   -- solve: (r^n * s 0 < ε) ← (n > log_base r (ε / s 0)), with 0 < r < 1
   intros ε ε_pos,
   have get_N := exists_nat_gt (log_base r (ε / abs (s 0))),
@@ -338,11 +405,33 @@ lemma proof (s : sequentia ℝ) : (∀ n, abs (s (n+1)) < r*abs (s n)) → s ⟶
   have := lt_of_lt_of_le N_gt this,
   suffices finishing : log_base r (ε / abs (s 0)) < n → r ^ n * abs (s 0) < ε,
     exact finishing this,
+  -- can't prove this in Lean
   admit,
   end
 
 end problem7
 
+
+namespace problem8
+
+noncomputable theory
+
+-- (8) Suppose limn→∞ (s n − 1)/(s n + 1) = 0. Prove that limn→∞ s n = 1.
+variable (s : seq ℝ)
+def ratio : seq ℝ := λ n, (s n - 1)/(s n + 1)
+
+open classical
+local attribute [instance] prop_decidable
+
+-- I don't know how to show that it converges ...
+-- but assuming it converges, and is never equal to -1,
+-- and does not approach -1, it would be easy enough
+-- to appeal to the algebraic limit theorems to say that
+--   lim (s n - 1) = 0 * lim (s n + 1) = 0
+--   lim s n = 0 + 1 = 1
+lemma proof : (ratio s ⟶ 0) → (s ⟶ 1) := sorry
+
+end problem8
 
 namespace problem9
 
@@ -356,7 +445,7 @@ open real
 --     (c) Prove that {sn}∞n=1 is convergent.
 --     (d) Prove that limn→∞ sn = 2.
 
-noncomputable def s : sequentia ℝ
+noncomputable def s : seq ℝ
 | 0 := 1
 | (n+1) := sqrt 2 * sqrt (s n)
 @[simp] lemma s_0 : s 0 = 1 := rfl
@@ -374,92 +463,8 @@ lemma s_pos : ∀ n, 0 < s n :=
   show 0 < sqrt 2, rw sqrt_pos, exact two_pos,
   end
 
-meta def iterating (t : tactic unit) : tactic ℕ := do
-  (nat.succ <$> (t >> iterating)) <|> pure 0
 
-meta def rw_simple : bool → pexpr → tactic unit :=
-  λ symm rule,
-  tactic.interactive.rw
-    { rules :=
-      [ { pos := { line := 0, column := 0 }
-        , symm := symm
-        , rule := rule
-        }
-      ]
-    , end_pos := none
-    }
-    (interactive.loc.ns [none])
-
-meta def naturally : interactive.parse interactive.types.texpr → tactic unit := λ t, do
-  i0 ← iterating $ rw_simple tt ``(@nat.cast_zero %%t),
-  i1 ← iterating $
-    has_bind.and_then (rw_simple tt ``(@nat.cast_one %%t)) $
-      tactic.interactive.iterate none $
-        rw_simple tt ``(@nat.cast_bit0 %%t) <|> rw_simple tt ``(@nat.cast_bit1 %%t),
-  i2 ← iterating $ rw_simple tt ``(@nat.cast_add %%t) <|> rw_simple tt ``(@nat.cast_mul %%t),
-  i3 ← iterating $ rw_simple ff ``(@nat.cast_lt %%t) <|> rw_simple ff ``(@nat.cast_le %%t) <|> rw_simple ff ``(@nat.cast_inj %%t) <|> rw_simple ff ``(@nat.cast_max %%t) <|> rw_simple ff ``(@nat.cast_min %%t),
-  match i0 + i1 + i2 + i3 with
-  | nat.zero := tactic.fail "naturally did nothing"
-  | nat.succ _ := tactic.try $ do
-    tactic.exact_dec_trivial
-  end
-
-meta def natureally : tactic unit := naturally ``(ℝ)
-
-/-
-meta def naturally (t : expr) : tactic unit := do
-    i0 ← iterating `[ rw [← @nat.cast_zero %%t] ],
-    i1 ← iterating `[
-      rw [← @nat.cast_one t],
-      iterate { rw [← @nat.cast_bit0 t] <|> rw [← @nat.cast_bit1 t] }
-    ],
-    i2 ← iterating `[ rw [← @nat.cast_add t] <|> rw [← @nat.cast_mul t] ],
-    i3 ← iterating `[ rw [@nat.cast_le t] <|> rw [@nat.cast_lt t] <|> rw [@nat.cast_inj t] ],
-    match i0 + i1 + i2 + i3 with
-    | nat.zero := tactic.fail "naturally did nothing"
-    | nat.succ _ := pure punit.star
-    end
-
-meta def rationally (t : expr) : tactic unit :=
-  `[
-    iterate { rw [← @rat.cast_zero %%t] },
-    iterate {
-      rw [← @rat.cast_one %%t],
-      iterate { rw [← @rat.cast_bit0 %%t] <|> rw [← @rat.cast_bit1 %%t] },
-    },
-    iterate { rw [← @rat.cast_add %%t] <|> rw [← @rat.cast_mul %%t] },
-    iterate { rw [@rat.cast_le %%t] <|> rw [@rat.cast_lt %%t] <|> rw [@rat.cast_inj %%t] }
-  ]
--/
-
-example : ∀ n : ℕ, (0 : ℕ) < 2 + n := by intro n; simpa [nat.zero_lt_succ]
-
-example : ∀ n : ℕ, (0 : ℝ) < 2 + n :=
-  begin
-  intro n,
-  natureally,
-  rw [add_comm _ n],
-  apply nat.zero_lt_succ
-  end
-
-example : ∀ (n : ℕ), (0 : ℝ) < 2 + n :=
-  begin
-  intro n,
-  natureally,
-  rw [add_comm _ n],
-  exact dec_trivial
-  end
-
-
-
-
-
-
-
-
-
-
-
+-- The base case reduces to this ... not fun.
 lemma ugh : sqrt (2 * sqrt 2) ≥ 3/2 :=
   begin
   rw [← @sqrt_sqr (3/2)],
@@ -484,6 +489,7 @@ lemma ugh : sqrt (2 * sqrt 2) ≥ 3/2 :=
   all_goals { natureally },
   end
 
+-- Trust me, this looks a lot easier since I created natureally.
 lemma sigh : ∀ (n : ℕ), @has_le.le ℝ _ ((n+2)+2*(n+3)^2) (4*(n+2)*(n+3)) :=
     begin
     intro n,
@@ -492,6 +498,8 @@ lemma sigh : ∀ (n : ℕ), @has_le.le ℝ _ ((n+2)+2*(n+3)^2) (4*(n+2)*(n+3)) :
     ring, natureally,
     end
 
+-- This is the main lemma for proving that s converges to 2
+-- by comparing it to the easy harmonic sequence.
 -- 2 - s n < ε ... n > 1/ε
 lemma s_sup : ∀ n : {n : ℕ // n > 1}, s n ≥ 2 - 1/n :=
   begin
@@ -591,6 +599,7 @@ lemma s_sup : ∀ n : {n : ℕ // n > 1}, s n ≥ 2 - 1/n :=
   }
   end
 
+-- Easy enough to show that is is bounded above by 2.
 lemma part_a : ∀ n, s n ≤ 2 :=
   begin
   intro n, induction n with n ih,
@@ -606,6 +615,7 @@ lemma part_a : ∀ n, s n ≤ 2 :=
   rw mul_self_sqrt, apply le_of_lt, exact two_pos,
   end
 
+-- And always increasing (strictly!).
 lemma part_b : ∀ n, s n < s (n+1) :=
   begin
   intro n, induction n with n ih,
@@ -622,6 +632,7 @@ lemma part_b : ∀ n, s n < s (n+1) :=
   have := le_of_lt (s_pos (n+1)), simpa
   end
 
+-- So it must converge!
 lemma part_c : converges s :=
   begin
   apply converges_iff_bdd_not_decr,
@@ -631,6 +642,7 @@ lemma part_c : converges s :=
 
 lemma blah {a b c : ℝ} : c - a < c - b → a > b := le_imp_le_iff_lt_imp_lt.1 (λ h, sub_le_sub_left h _)
 
+-- And we use the stuff above to show that it converges to 2.
 lemma part_d : s ⟶ 2 :=
   begin
   suffices : Sup {x : ℝ | ∃ (n : ℕ), x = s n} = 2,
