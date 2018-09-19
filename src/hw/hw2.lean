@@ -179,23 +179,61 @@ namespace problem2
 
 open lattice
 
-constant A : set ℝ
-constant A_nonempty : A ≠ ∅
-constant A_bdd_above : bdd_above A
-constant A_bdd_below : bdd_below A
-def B : set ℝ := upper_bounds A
+-- this is kind of ugly, mixing variables and constants
+-- I think it forces me to annotate the types of the sets
+-- (so it knows what the variable α should be),
+-- but I think that's better than parameterizing B over A.
+variable {α : Type}
+variable [_inst_1 : conditionally_complete_lattice α]
+constant A : set α
+constant A_nonempty : (A : set α) ≠ ∅
+constant A_bdd_above : bdd_above (A : set α)
+constant A_bdd_below : bdd_below (A : set α)
+def B : set α := upper_bounds A
 
 -- The implementation of is_lub is instructive
 #print is_lub
 #print is_least
 -- That is, a least upper bound is an upper bound which is
 -- a lower bounds on the upper bounds.
+-- So it makes sense that Inf B and Sup A both represent the
+-- exact boundary between these sets, informally speaking,
+-- so they will be equal.
 
 -- This already exists
+#check exists_mem_of_ne_empty
 #check cInf_lower_bounds_eq_cSup
-lemma proof : Inf B = Sup A :=
+-- Here's another proof of it
+lemma proof : Inf (B : set α) = Sup (A : set α) :=
   begin
-  exact cInf_lower_bounds_eq_cSup A_bdd_above A_nonempty,
+  -- B is bounded below by Sup A, since B consists of upper bounds
+  -- and Sup A is the _least_ upper bound.
+  have B_bdd_below : bdd_below (B : set α),
+    begin
+    unfold B upper_bounds,
+    existsi (Sup (A : set α)), intros y y_upper_bound,
+    simp at y_upper_bound,
+    apply cSup_le A_nonempty y_upper_bound,
+    end,
+  -- B is nonempty, from the proof that A is bounded above.
+  have B_nonempty : (B : set α) ≠ ∅ :=
+    set.ne_empty_iff_exists_mem.2 A_bdd_above,
+  apply le_antisymm,
+  {
+    -- Inf B ≤ Sup A since Sup A ∈ B and Inf is a lower bound
+    apply cInf_le B_bdd_below,
+    simp [B, upper_bounds],
+    intros a a_mem_A,
+    exact le_cSup A_bdd_above a_mem_A,
+  }, {
+    -- Sup A ≤ Inf B since Inf is the greatest lower bound of B and
+    -- Sup A is a lower bound of B (aka the upper bounds of A)
+    apply le_cInf B_nonempty,
+    intros b b_mem_B,
+    apply cSup_le A_nonempty,
+    intros a a_mem_A,
+    exact b_mem_B a a_mem_A,
+  },
   end
 
 end problem2
@@ -223,13 +261,15 @@ lemma eq_singleton_of_nonempty_of_subset_singleton
 
 open lattice
 
-constant A : set ℝ
-constant A_nonempty : A ≠ ∅
-constant A_bdd_above : bdd_above A
-constant A_bdd_below : bdd_below A
+variable {α : Type}
+variable [_inst_1 : conditionally_complete_lattice α]
+constant A : set α
+constant A_nonempty : (A : set α) ≠ ∅
+constant A_bdd_above : bdd_above (A : set α)
+constant A_bdd_below : bdd_below (A : set α)
 
 -- A must be a singleton set {a}, thus a = Inf A = Sup A
-lemma proof (a : ℝ) (a_Inf : a = Inf A) (a_Sup : a = Sup A) : A = {a} :=
+lemma proof (a : α) (a_Inf : a = Inf A) (a_Sup : a = Sup A) : (A : set α) = {a} :=
   begin
   -- a must be the least upper bound
   have a_lub : is_lub A a,
