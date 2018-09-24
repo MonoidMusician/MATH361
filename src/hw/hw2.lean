@@ -1,32 +1,9 @@
 import analysis.real tactic.ring tactic.interactive
-import seq naturally
+import seq naturally background
 
 open set
 
--- Helper definition with some associated lemmas
-def signed (n : ℕ) : ℤ :=  (-1 : ℤ)^n
-
-lemma signed_cases : ∀ n, (signed n = 1) ∨ (signed n = -1) :=
-begin
-  intro n, unfold signed,
-  cases nat.mod_two_eq_zero_or_one n;
-  rw [← nat.mod_add_div n 2, pow_add, pow_mul, h];
-  simp [pow_two],
-end
-
-@[simp] lemma signed_even {n : ℕ} : signed (2*n) = 1 :=
-  begin
-  induction n, refl, unfold signed,
-  rw nat.mul_succ, rw pow_succ, rw pow_succ,
-  simp, exact n_ih,
-  end
-@[simp] lemma signed_odd {n : ℕ} : signed (2*n+1) = -1 :=
-  begin
-  unfold signed,
-  rw pow_succ,
-  show -1 * signed (2*n) = -1,
-  rw signed_even, refl,
-  end
+namespace hw2
 
 namespace problem1
 
@@ -517,16 +494,14 @@ lemma ugh : sqrt (2 * sqrt 2) ≥ 3/2 :=
   apply div_le_of_le_mul,
   show (81 : ℝ) ≤ 64 * 2,
   transitivity,
-  { show (81 : ℝ) ≤ 128, natureally },
+  { show (81 : ℝ) ≤ 128, norm_num, natureally },
   { apply le_of_eq, ring },
-  { show (0 : ℝ) < 64, natureally },
   show 0 ≤ 2 * sqrt 2,
   {
     apply mul_nonneg, tactic.swap, apply sqrt_nonneg, repeat { exact le_of_lt two_pos },
   },
   any_goals { unfold pow monoid.pow, rw [mul_one, div_mul_div] },
-  any_goals { ring, apply div_nonneg },
-  all_goals { natureally },
+  all_goals { norm_num },
   end
 
 -- Trust me, this looks a lot easier since I created natureally.
@@ -535,7 +510,7 @@ lemma sigh : ∀ (n : ℕ), @has_le.le ℝ _ ((n+2)+2*(n+3)^2) (4*(n+2)*(n+3)) :
     intro n,
     ring, rw [right_distrib, right_distrib],
     apply le_of_sub_nonneg,
-    ring, natureally,
+    ring, natureally
     end
 
 -- This is the main lemma for proving that s converges to 2
@@ -718,3 +693,5 @@ lemma part_d : s ⟶ 2 :=
   end
 
 end problem9
+
+end hw2

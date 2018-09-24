@@ -1,5 +1,6 @@
 -- Definitions and theorems relating to sequences
 import analysis.real analysis.normed_space
+import algebra.big_operators
 import tactic.ring
 
 -- The type for a sequence: a function whose domain is ℕ
@@ -20,6 +21,28 @@ instance seq.has_neg {α : Type} [has_neg α] : has_neg (seq α) :=
 { neg := λ s n, has_neg.neg (s n) }
 instance seq.has_inv {α : Type} [has_inv α] : has_inv (seq α) :=
 { inv := λ s n, has_inv.inv (s n) }
+instance seq.add_monoid {α : Type} [add_monoid α] : add_monoid (seq α) :=
+{ add := (+), zero := 0
+, add_assoc := by intros; apply funext; intro; simp
+, zero_add := begin intros; apply funext; intro; simp,
+  show 0 + a x = a x, simp,
+  end
+, add_zero := begin intros; apply funext; intro; simp,
+  show a x + 0 = a x, simp,
+  end
+}
+
+instance seq.add_group {α : Type} [add_group α] : add_group (seq α) :=
+{ neg := has_neg.neg
+, add_left_neg := by intros; apply funext; intro; simpa
+, ..seq.add_monoid
+}
+
+def shift {α : Type} (m : ℕ) (s : seq α) : seq α :=
+  λ n, s (n + m)
+
+def seq.sum {α : Type} (s : seq α) [add_monoid α] : seq α :=
+  λn, list.sum (s <$> list.range n)
 
 -- A topological definition of converging to a point.
 -- (Based off a term spotted in analysis.limits in mathlib.)
@@ -45,6 +68,107 @@ lemma converges_to.def
     , filter.tendsto_infi
     , filter.tendsto_principal
     ]
+
+lemma converges_to.unique
+  {α : Type} [metric_space α]
+  (s : seq α) (l₁ l₂ : α) :
+  converges_to s l₁ → converges_to s l₂ → ¬¬(l₁ = l₂) :=
+  begin
+  intros c1 c2,
+  suffices arbitrarily_close : ∀ ε > 0, dist l₁ l₂ < ε,
+    begin
+    by_contradiction,
+    rw [← dist_eq_zero] at a,
+    have dist_pos : dist l₁ l₂ > 0,
+      apply lt_of_le_of_ne,
+      apply dist_nonneg,
+      exact ne.symm a,
+    exact lt_irrefl _ (arbitrarily_close _ dist_pos),
+    end,
+  rw [converges_to.def] at c1 c2,
+  intros ε ε_pos,
+  have half_ε_pos : ε/2 > 0 := div_pos ε_pos two_pos,
+  apply exists.elim (c1 _ half_ε_pos), intros N1 n1,
+  apply exists.elim (c2 _ half_ε_pos), intros N2 n2,
+  apply lt_of_le_of_lt,
+  apply dist_triangle, exact s (max N1 N2),
+  rw [← add_halves ε],
+  apply add_lt_add,
+  rw [dist_comm],
+  apply n1, apply le_max_left,
+  apply n2, apply le_max_right,
+  end
+
+lemma nat.le_of_add_le : ∀ {m n k : ℕ}, k + m ≤ n → m ≤ n :=
+  begin
+  intros, induction k with k ih, simp at a, exact a,
+  rw [nat.succ_add] at a,
+  exact ih (nat.le_of_succ_le a),
+  end
+
+lemma shift.converges_to
+  {α : Type} [metric_space α]
+  {s : seq α} {l : α} {m : ℕ} : converges_to s l ↔ converges_to (shift m s) l :=
+  begin
+  suffices f : filter.map s filter.at_top = filter.map (shift m s) filter.at_top,
+    {
+      simp [converges_to, filter.tendsto],
+      rwa f,
+    },
+  apply filter.ext, intro s,
+  iterate {
+    rw [filter.mem_map],
+    rw [filter.mem_at_top_sets],
+  },
+  simp,
+  constructor,
+  {
+    intro e,
+    apply exists.elim e, intros n p,
+    existsi n, intros b b_ge_n,
+    apply p,
+    transitivity,
+    apply nat.le_add_right,
+    assumption,
+  }, {
+    intro e,
+    apply exists.elim e, intros n p,
+    existsi (n+m), intros b b_ge_n_add_m,
+    have := p (b-m) (nat.le_sub_right_of_add_le b_ge_n_add_m),
+    refine eq.mp _ this,
+    congr, unfold shift,
+    rw [add_comm, nat.add_sub_cancel'],
+    apply nat.le_of_add_le,
+    assumption,
+  }
+  end
+
+def take_limit (s : seq ℚ) : converges s → ℝ :=
+  λ conv, quotient.mk $ subtype.mk s $
+  begin
+  apply exists.elim conv, intros l conv_to_l,
+  intros ε ε_pos,
+  have half_uε_pos : (↑(ε/2) : ℝ) > 0 := rat.cast_pos.2 (div_pos ε_pos two_pos),
+  apply exists.elim ((converges_to.def s l).1 conv_to_l _ half_uε_pos),
+  intros i close,
+  existsi i,
+  intros j j_ge,
+  have ci := close i (le_refl i),
+  have cj := close j j_ge,
+  have : dist (s j) (s i) < ↑(ε/2) + ↑(ε/2),
+    begin
+    apply lt_of_le_of_lt,
+    apply dist_triangle_left (s j) (s i) l,
+    rw [dist_comm l, dist_comm l],
+    exact add_lt_add cj ci,
+    end,
+  rw
+    [ rat.dist_eq
+    , ← rat.cast_sub, ← rat.cast_add
+    , ← rat.cast_abs, rat.cast_lt
+    ] at this,
+  simp at *, exact this,
+  end
 
 section cls
 
@@ -151,7 +275,21 @@ lemma converges_to.scale_epsilon
   intros, exact a (ε * c) (mul_pos H Hc),
   end
 
-lemma converges_to.sum
+lemma converges_to.neg
+  {α : Type} [normed_group α]
+  {s : seq α} {l : α} :
+  converges_to s l →
+  converges_to (-s) (-l) :=
+  begin
+  intros h,
+  rw [converges_to.def] at *,
+  have : ∀ (a b : α), ∥a - b∥ = ∥b - a∥,
+    intros, iterate { rw [← dist_eq_norm] }, exact dist_comm a b,
+  simp [dist_eq_norm] at *,
+  simp [this] at h, exact h,
+  end
+
+lemma converges_to.add
   {α : Type} [normed_group α]
   {s₁ s₂ : seq α} {l₁ l₂ : α} :
   converges_to s₁ l₁ → converges_to s₂ l₂ →
@@ -175,6 +313,20 @@ lemma converges_to.sum
   apply norm_triangle,
   rw [← add_halves ε],
   exact add_lt_add δ1 δ2,
+  end
+
+lemma converges_to.sub
+  {α : Type} [normed_group α]
+  {s₁ s₂ : seq α} {l₁ l₂ : α} :
+  converges_to s₁ l₁ → converges_to s₂ l₂ →
+  converges_to (s₁ - s₂) (l₁ - l₂) :=
+  begin
+  intros h₁ h₂,
+  simp,
+  apply converges_to.add,
+  assumption,
+  apply converges_to.neg,
+  assumption,
   end
 
 lemma converges_to.prod
@@ -291,3 +443,38 @@ lemma converges_to.inv
       end
   ... = ε : by rw [mul_div_cancel_left _ (ne_of_gt l_M_pos)],
   end
+
+lemma converges_to_zero_of_sum_converges
+  {α : Type} {s : seq α} [normed_group α]
+  : converges (seq.sum s) → converges_to s 0 :=
+  begin
+  intro conv,
+  apply exists.elim conv,
+  intros l conv_to_l,
+  have conv_to_l' : converges_to (shift 1 (seq.sum s)) l,
+    rw [← shift.converges_to], assumption,
+  have conv_to_zero : converges_to (shift 1 (seq.sum s) - seq.sum s) 0,
+    have := converges_to.sub conv_to_l' conv_to_l,
+    simp at this,
+    exact this,
+  refine eq.mp _ conv_to_zero,
+  congr, funext,
+  simp [shift, seq.sum],
+  have : list.range (n + 1) = list.range' 0 n ++ list.range' n 1,
+    begin
+    rw [add_comm],
+    rw [← zero_add n] { occs := occurrences.pos [3] },
+    rw [list.range_eq_range'],
+    symmetry,
+    apply list.range'_append,
+    end,
+  rw [this, list.map_append, list.sum_append, list.range_eq_range'],
+  simp,
+  end
+
+def is_subsequence_of
+  {α : Type} (s₁ s₂ : seq α) :=
+    ∃ f : ℕ → ℕ, (∀ n m, n < m → f n < f m) ∧ (∀ n, s₁ (f n) = s₂ n)
+
+def subsequence_of
+  {α : Type} (s : seq α) := subtype (is_subsequence_of s)
