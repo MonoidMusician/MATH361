@@ -339,7 +339,7 @@ end problem4
 
 local infix `⟶`:50 := converges_to
 
-lemma converges_iff_bdd_not_decr (s : seq ℝ) :
+lemma converges_of_bdd_not_decr (s : seq ℝ) :
   bdd_above {x : ℝ | ∃ n, x = s n} → (∀ n, s n ≤ s (n+1)) → converges s := sorry
 
 lemma converges_to_cSup (s : seq ℝ) : (∀ n, s n ≤ s (n+1)) → s ⟶ lattice.Sup {x : ℝ | ∃ n, x = s n} := sorry
@@ -650,7 +650,7 @@ lemma part_b : ∀ n, s n < s (n+1) :=
 -- So it must converge!
 lemma part_c : converges s :=
   begin
-  apply converges_iff_bdd_not_decr,
+  apply converges_of_bdd_not_decr,
   existsi (2 : ℝ), simp, intros y x y_x, rw y_x, exact part_a x,
   intro n, exact le_of_lt (part_b n),
   end

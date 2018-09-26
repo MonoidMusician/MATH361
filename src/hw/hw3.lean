@@ -1,20 +1,242 @@
 import analysis.real tactic.ring tactic.interactive
-import seq naturally background
+import seq naturally background binomial
 
 namespace problem1
 
 noncomputable theory
 
-def a : seq ℝ := λ n, (1+1/(1+n))^n
-def b : seq ℝ := a ∘ nat.succ
+lemma converges_of_bdd_not_decr (s : seq ℝ) :
+  bdd_above {x : ℝ | ∃ n, x = s n} → (∀ n, s n ≤ s (n+1)) → converges s := sorry
+
+lemma converges_to_cSup (s : seq ℝ) : (∀ n, s n ≤ s (n+1)) → converges_to s (lattice.Sup {x : ℝ | ∃ n, x = s n}) := sorry
+
+def a : seq ℝ := shift 1 $ λ n, (1+1/n)^n
+def b : seq ℝ := shift 1 $ λ n, (1+1/n)^(n+1)
 def I : seq (set ℝ) := λ n, set.Icc (a n) (b n)
 
-def real.e_seq : seq ℚ := λ n, (1+1/(1+n))^n
-def real.e : ℝ := take_limit real.e_seq
+def b_rat : seq ℚ := shift 1 $ λ n, (1+1/n)^(n+1)
+def e_seq : seq ℚ := shift 1 $ λ n, (1+1/n)^n
+
+lemma rat.cast_pow {α : Type} [division_ring α] [char_zero α] :
+  ∀ a : ℚ, ∀ n : ℕ, ((a^n : ℚ) : α) = (a : α)^n :=
   begin
+  intros,
+  induction n with n ih,
+  simpa,
+  simp [has_pow.pow, monoid.pow] at *,
+  rw ih,
   end
 
-#check set.Inter I = {real.e}
+example : a = coe ∘ e_seq :=
+  begin
+  apply funext, intro n,
+  simp [e_seq, a, shift],
+  rwa
+    [ rat.cast_pow
+    , rat.cast_add
+    , rat.cast_one
+    , rat.cast_inv
+    , rat.cast_add
+    , rat.cast_one
+    , rat.cast_coe_nat
+    ],
+  end
+
+lemma binomial_e_seq : ∀ n, e_seq n = binomial.expansion 1 (1/(n+1)) (n+1) :=
+  λ n, binomial_theorem 1 (1/(n+1)) (n+1)
+
+lemma binomial_b_rat : ∀ n, b_rat n = binomial.expansion 1 (1/(n+1)) (n+2) :=
+  λ n, binomial_theorem 1 (1/(n+1)) (n+2)
+
+def e_seq_incr : ∀ n, e_seq (n+1) > e_seq n :=
+  begin
+  intro,
+  end
+
+-- #check @add_le_add
+
+lemma list.sum_map_le {α : Type} {l : list α} {f g : α → ℚ} :
+  (∀ e ∈ l, f e ≤ g e) →
+  list.sum (list.map f l) ≤ list.sum (list.map g l) :=
+  begin
+  intro ha,
+  induction l with l0 l ih, simp,
+  simp,
+  apply add_le_add,
+  apply ha, left, refl,
+  apply ih, intros e m, apply ha, right, exact m,
+  end
+
+lemma helper' {α : Type} {l : list α} {f g : α → ℚ} {c : ℚ} :
+  (∃ e ∈ l, c + f e < g e) →
+  (∀ e ∈ l, f e ≤ g e) →
+  c + list.sum (list.map f l) < list.sum (list.map g l) :=
+  begin
+  intros he ha,
+  induction l with l0 l ih,
+  exfalso,
+  apply exists.elim he,
+  intros e e_mem_nil,
+  apply exists.elim e_mem_nil,
+  intros e_mem_nil _,
+  exact list.not_mem_nil e e_mem_nil,
+  simp at he |-,
+  apply exists.elim he,
+  rintro e ⟨e_here | e_there, e_prop⟩,
+  rw e_here at e_prop,
+  rw [← add_assoc],
+  apply lt_of_le_of_lt,
+  apply add_le_add_left,
+  show list.sum (list.map f l) ≤ list.sum (list.map g l),
+  apply list.sum_map_le,
+  intros e m, apply ha, right, exact m,
+  apply add_lt_add_right,
+  assumption,
+  rw [← add_assoc, add_comm c, add_assoc],
+  apply lt_of_lt_of_le,
+  apply add_lt_add_left,
+  apply ih,
+  existsi e, existsi e_there, exact e_prop,
+  intros e m, apply ha, right, exact m,
+  apply add_le_add_right,
+  apply ha, left, refl,
+  end
+
+@[simp] lemma B_1 : ∀ n, B n 1 = n :=
+  begin
+  intro n,
+  induction n with n ih,
+  refl,
+  simp [B], rw ih, ring,
+  end
+
+@[simp] lemma B_2 : ∀ n, B (n+2) 2 = ((n+2) * (n+1))/2 :=
+  begin
+  intro n,
+  induction n with n ih,
+  refl,
+  unfold1 B, rw [B_1, ih],
+  admit,
+  end
+
+-- I stumbled upon the fact that this is true for all n=i
+-- It says that one item in the list is sufficiently smaller
+-- than the corresponding term in the other list
+-- to offset the extra term
+#eval ((λ (n i : ℕ), (2 + ↑n : ℚ)⁻¹ ^ (n + 3) + ↑(B (n + 3) (nat.succ i)) * (1 + (1 + ↑n))⁻¹ ^ (n + 2 - i) <
+    ↑(B (n + 2) i) * (1 + ↑n)⁻¹ ^ (n + 2 - i)) 6 6 : bool)
+
+def blah (n : ℕ) :
+  (2 + ↑n : ℚ)⁻¹ ^ (n + 3) +
+  ↑(B (n + 3) (n + 1)) * (1 + (1 + ↑n))⁻¹ ^ (n + 2 - n) <
+    ↑(B (n + 2) n) * (1 + ↑n)⁻¹ ^ (n + 2 - n) :=
+  begin
+  ring,
+  rw [B.symm (by norm_num : n+1≤n+3), B.symm (by norm_num : n≤n+2)],
+  simp [nat.add_sub_cancel_left],
+  admit,
+  -- Reasoning:
+  --   B (n+3) (n+1) * ((n+2)⁻¹ ^ 2) = (n+3)*(n+2)/2 * ((n+2)⁻¹ ^ 2)
+  -- and
+  --   B (n+2) n * (n+1)⁻¹ ^ 2 = (n+2)*(n+1)/2 * ((n+1)⁻¹ ^ 2)
+  -- So we want
+  --   (n+2)⁻¹ ^ (n+3) + (n+3)*(n+2)/2 * ((n+2)⁻¹ ^ 2) < (n+2)*(n+1)/2 * ((n+1)⁻¹ ^ 2)
+  -- Clear the (positive) denominators:
+  --   2*(n+1)*((n+2)⁻¹ ^ (n+2)) + (n+3)*(n+1) < (n+2)^2
+  --   ---------/-----/--------- + n^2 + 4*n + 3 < n^2 + 4*n + 4
+  -- And we have
+  --   2*(n+1)*((n+2)⁻¹ ^ (n+2))
+  -- = 2*((n+1)/(n+2))*((n+2)⁻¹ ^ (n+1))
+  -- = 2*((n+2)⁻¹ ^ (n+1))*((n+1)/(n+2))
+  -- ≤ 2*(1/2)*((n+1)/(n+2))
+  -- = 1*(n+1)/(n+2)
+  -- < 1*1 = 1
+  -- So this is done.
+  end
+
+-- Hm
+#eval (λ n i, (B (n + 3) (nat.succ i) : ℚ) * (↑n + 2)⁻¹ ^ (n + 2 - i)
+    ≤ ↑(B (n + 2) i) * (↑n + 1)⁻¹ ^ (n + 2 - i) : ℕ → ℕ → bool) 1 0
+
+def b_rat_decr : ∀ n, b_rat (n+1) < b_rat n :=
+  begin
+  intro n,
+  rw [binomial_b_rat, binomial_b_rat],
+  unfold binomial.expansion,
+  rw [list.range_succ_eq_map],
+  simp, ring,
+  suffices : (∃ i ∈ list.range (n+3),
+    (n + 2 : ℚ)⁻¹ ^ (n + 3) +
+      ((λ (i : ℕ), (B (n + 3) i : ℚ) * (1 + (1 + ↑n))⁻¹ ^ (n + 3 - i)) ∘ nat.succ) i
+    < (λ (i : ℕ), (B (n + 2) i : ℚ) * (1 + ↑n)⁻¹ ^ (n + 2 - i)) i)
+    ∧ (∀ i ∈ list.range (n+3), 
+      ((λ (i : ℕ), (B (n + 3) i : ℚ) * (1 + (1 + ↑n))⁻¹ ^ (n + 3 - i)) ∘ nat.succ) i
+    ≤ (λ (i : ℕ), (B (n + 2) i : ℚ) * (1 + ↑n)⁻¹ ^ (n + 2 - i)) i),
+    {
+      exact helper' this.1 this.2,
+    },
+  simp,
+  constructor,
+  existsi n,
+  constructor,
+  norm_num,
+  exact blah n,
+  intros i i_mem,
+  ring,
+  show (B (n + 3) (i + 1) : ℚ) * (↑n + 2)⁻¹ ^ (n + 2 - i)
+    ≤ ↑(B (n + 2) i) * (↑n + 1)⁻¹ ^ (n + 2 - i),
+  -- have: n+2-i ≥ 0
+  -- B (n+3) (i+1) * (n+2)⁻¹ ^ (n+2-i)
+  -- = list.prod (list.map (λ j, (n+3-j)/(n+2)) (list.range (n+2-i)))
+  -- B (n+2) i * (n+1)⁻¹ ^ (n+2-i)
+  -- = list.prod (list.map (λ j, (n+2-j)/(n+1)) (list.range (n+2-i)))
+  -- and we have
+  -- ∀ j ∈ list.range (n+2-i),
+  --    (n+3-j)/(n+2) ≤ (n+2-j)/(n+1)
+  --  ↔ (n+1)(n+3-j) ≤ (n+2)(n+2-j)
+  --  ↔ n^2 + 4*n + 3 - j*(n+1) ≤ n^2 + 4*n + 4 - j*(n+2)
+  --  ↔ j ≤ 1
+  -- nope, that's not right
+  -- I give up ...
+  end
+
+def real.e : ℝ := quotient.mk ⟨e_seq,
+  begin
+  have binomial_b_rat := binomial_b_rat,
+  simp [binomial.expansion, list.range_succ_eq_map] at binomial_b_rat,
+  intros ε ε_pos,
+  admit,
+  end⟩
+
+-- ∀ n, b n = a n * (1 + 1/(n+1)) > a n
+-- intervals are properly nested since a n increasing, b n decreasing (unproven)
+-- thus (set.Inter I = {real.e}), because e is obviously the supremum of
+-- the set of a n terms and the infimum of b n terms, since their difference goes to 0
+
+lemma converge : converges_to (a - b) 0 :=
+  begin
+  rw [converges_to.def],
+  have : ∀ (n : ℕ), (a - b) n = (1 + (1 + n : ℝ)⁻¹) ^ (n + 1) * (1 - (1 + (1 + n : ℝ)⁻¹)),
+    intro n,
+    change (a - b) n with a n - b n,
+    unfold a b shift,
+    rw
+      [ one_div_eq_inv
+      , nat.cast_succ
+      , add_comm (1 : ℝ) (n : ℝ)
+      , mul_sub_left_distrib
+      , pow_succ _ (n+1)
+      , mul_one
+      , mul_comm
+      ],
+  simp only [this],
+  rw [← converges_to.def, ← mul_zero],
+  apply converges_to.prod,
+  admit, -- a n converges to real.e
+  simp,
+  admit, -- and -(1 + ↑n)⁻¹ converges to 0, obviously
+  exact real.e,
+  end
 
 end problem1
 
@@ -138,12 +360,22 @@ lemma proof {α : Type} [metric_space α] [add_monoid α]
 end problem2
 
 namespace problem3
+
+-- Explanation:
+-- group_by effects the "adding of parentheses"
+-- by grouping many terms of the original series
+-- under one term of the new series
+-- (thus evaluation will seem to skip many indices
+-- of the original sequence); adding even
+-- infinite parentheses would produce the same effect,
+-- since each top-level parenthesis group counts for one term.
+
 end problem3
 
 namespace problem4
 
 -- This pairs the terms in a sum like
--- (a 1 + a 2) + (a 3 + a 4) + ···
+-- (a 0 + a 1) + (a 2 + a 3) + ···
 def pairs {α : Type} [has_add α] (s : seq α) : seq α :=
   λ n, s (2*n) + s (2*n+1)
 
