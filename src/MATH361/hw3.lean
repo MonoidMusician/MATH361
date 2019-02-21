@@ -425,7 +425,7 @@ instance int.normed_group : normed_group ℤ :=
 -- This sum diverges, since its terms do not go to 0
 lemma a_div : ¬converges a :=
   begin
-  intro conv,
+  by_contradiction conv,
   have := converges_to_zero_of_sum_converges conv,
   rw [converges_to.def] at this,
   -- (1/2) is the easiest 0 < ε < 1
